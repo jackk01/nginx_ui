@@ -1,0 +1,37 @@
+version: '3.8'
+
+services:
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: nginx_ui_backend
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./data:/app/data
+      - /var/run/docker.sock:/var/run/docker.sock
+    environment:
+      - DATABASE_URL=sqlite+aiosqlite:///data/nginx_ui.db
+      - SECRET_KEY=nginx-ui-secret-key-change-in-production
+      - DEBUG=true
+    restart: unless-stopped
+    networks:
+      - nginx_ui_network
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: nginx_ui_frontend
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
+    restart: unless-stopped
+    networks:
+      - nginx_ui_network
+
+networks:
+  nginx_ui_network:
+    driver: bridge
