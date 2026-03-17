@@ -3,9 +3,10 @@ from typing import Dict, Set
 import asyncio
 import json
 from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import get_db, AsyncSessionLocal
 from app.services.auth_service import get_current_user
-from app.services.log_service import LogService
+from app.services.config_service import LogService
 from app.models.models import User, Server
 
 router = APIRouter()

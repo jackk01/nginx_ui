@@ -117,7 +117,7 @@ class ConfigBackupCreate(ConfigBackupBase):
     pass
 
 
-class ConfigBackupResponse(ConfigBase):
+class ConfigBackupResponse(ConfigBackupBase):
     id: int
     config_file_id: int
     version: int
