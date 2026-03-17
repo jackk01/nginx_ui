@@ -117,7 +117,8 @@
 
 <script setup lang="ts">
 import { ref, reactive, onMounted } from 'vue'
-import { serversApi, Server } from '@/api/servers'
+import { serversApi } from '@/api/servers'
+import type { Server } from '@/api/servers'
 
 const loading = ref(false)
 const servers = ref<Server[]>([])

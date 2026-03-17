@@ -86,7 +86,8 @@
 import { ref, reactive, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox, FormInstance } from 'element-plus'
-import { serversApi, Server } from '@/api/servers'
+import { serversApi } from '@/api/servers'
+import type { Server } from '@/api/servers'
 
 const router = useRouter()
 

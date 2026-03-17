@@ -83,7 +83,8 @@
 import { ref, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { serversApi, Server, NginxStatus } from '@/api/servers'
+import { serversApi } from '@/api/servers'
+import type { Server, NginxStatus } from '@/api/servers'
 
 const route = useRoute()
 const serverId = Number(route.params.id)

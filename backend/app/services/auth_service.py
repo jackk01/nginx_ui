@@ -90,7 +90,7 @@ async def create_default_admin(db: AsyncSession) -> None:
     if not admin:
         admin = User(
             username="admin",
-            email="admin@nginx-ui.local",
+            email="admin@example.com",
             password_hash=get_password_hash("admin123")
         )
         db.add(admin)
