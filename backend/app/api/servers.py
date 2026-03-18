@@ -4,8 +4,9 @@ from sqlalchemy import select
 from typing import List
 from app.core.database import get_db
 from app.schemas.schemas import (
-    ServerCreate, ServerUpdate, ServerResponse, 
-    ServerConnectionTest, ConfigFileTree, LogFileResponse
+    ServerCreate, ServerUpdate, ServerResponse,
+    ServerConnectionTest, ConfigFileTree, LogFileResponse,
+    ConfigFileContent
 )
 from app.services.auth_service import get_current_user
 from app.services.ssh_service import get_client
@@ -13,6 +14,9 @@ from app.services.nginx_service import NginxService
 from app.services.config_service import ConfigService, LogService
 from app.models.models import User, Server
 import urllib.parse
+import logging
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/servers", tags=["Servers"])
 
@@ -175,13 +179,13 @@ async def test_connection(
         )
     )
     server = result.scalar_one_or_none()
-    
+
     if not server:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Server not found"
         )
-    
+
     try:
         client = get_client(
             server.host,
@@ -191,13 +195,13 @@ async def test_connection(
             server.password,
             server.ssh_key_path
         )
-        
+
         if server.mode == "local" or server.host in ["localhost", "127.0.0.1", ""]:
             return ServerConnectionTest(success=True, message="Local server")
-        
+
         # Test SSH connection
         success = await client.connect()
-        
+
         if success:
             await client.close()
             return ServerConnectionTest(success=True, message="Connection successful")
@@ -205,6 +209,61 @@ async def test_connection(
             return ServerConnectionTest(success=False, message="Connection failed")
     except Exception as e:
         return ServerConnectionTest(success=False, message=str(e))
+
+
+@router.post("/{server_id}/check-status")
+async def check_server_status(
+    server_id: int,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """Check and update server online/offline status"""
+    result = await db.execute(
+        select(Server).where(
+            Server.id == server_id,
+            Server.user_id == current_user.id
+        )
+    )
+    server = result.scalar_one_or_none()
+
+    if not server:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Server not found"
+        )
+
+    try:
+        client = get_client(
+            server.host,
+            server.port,
+            server.username or "",
+            server.mode,
+            server.password,
+            server.ssh_key_path
+        )
+
+        # For local mode or localhost, always online
+        if server.mode == "local" or server.host in ["localhost", "127.0.0.1", ""]:
+            server.status = "online"
+            await db.commit()
+            return {"status": "online", "message": "Local server is online"}
+
+        # For remote mode, test SSH connection
+        success = await client.connect()
+
+        if success:
+            await client.close()
+            server.status = "online"
+            await db.commit()
+            return {"status": "online", "message": "Server is online"}
+        else:
+            server.status = "offline"
+            await db.commit()
+            return {"status": "offline", "message": "Cannot connect to server"}
+    except Exception as e:
+        server.status = "offline"
+        await db.commit()
+        return {"status": "offline", "message": str(e)}
 
 
 # ==================== Config API ====================
@@ -265,12 +324,31 @@ async def get_config_file_content(
     
     config_service = ConfigService(server_to_dict(server))
     decoded_path = urllib.parse.unquote(file_path)
-    target_path = f"{server.nginx_conf_path}/{decoded_path}" if not file_path.startswith('/') else file_path
     
+    # Determine if this is an absolute path or relative path
+    # If it starts with '/', treat it as absolute path from root
+    # Otherwise, treat it as relative to nginx_conf_path
+    if decoded_path.startswith('/'):
+        # Absolute path - use directly after decoding
+        target_path = decoded_path
+    else:
+        # Relative path - prepend nginx_conf_path
+        target_path = f"{server.nginx_conf_path}/{decoded_path}"
+
+    # DEBUG: Log the path resolution
+    logger.info(f"[DEBUG] get_config_file_content called:")
+    logger.info(f"  - server_id: {server_id}")
+    logger.info(f"  - file_path (raw): {file_path}")
+    logger.info(f"  - decoded_path: {decoded_path}")
+    logger.info(f"  - server.nginx_conf_path: {server.nginx_conf_path}")
+    logger.info(f"  - target_path: {target_path}")
+
     try:
         content = await config_service.read_config_file(target_path)
+        logger.info(f"[DEBUG] Successfully read file: {target_path}")
         return {"content": content, "file_path": target_path}
     except Exception as e:
+        logger.error(f"[DEBUG] Failed to read file {target_path}: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=str(e)
@@ -281,8 +359,7 @@ async def get_config_file_content(
 async def save_config_file(
     server_id: int,
     file_path: str,
-    content: str,
-    auto_backup: bool = True,
+    file_data: ConfigFileContent,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ):
@@ -303,13 +380,18 @@ async def save_config_file(
     
     config_service = ConfigService(server_to_dict(server))
     decoded_path = urllib.parse.unquote(file_path)
-    target_path = f"{server.nginx_conf_path}/{decoded_path}" if not file_path.startswith('/') else file_path
     
+    # Determine if this is an absolute path or relative path
+    if decoded_path.startswith('/'):
+        target_path = decoded_path
+    else:
+        target_path = f"{server.nginx_conf_path}/{decoded_path}"
+
     # Create backup if requested
-    if auto_backup:
+    if file_data.auto_backup:
         await config_service.create_backup(target_path)
-    
-    success = await config_service.write_config_file(target_path, content)
+
+    success = await config_service.write_config_file(target_path, file_data.content)
     
     if success:
         return {"message": "File saved successfully"}

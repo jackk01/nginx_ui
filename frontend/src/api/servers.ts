@@ -12,14 +12,20 @@ export const serversApi = {
   updateServer: (id: number, data: Partial<Server>) => api.put<Server>(`/servers/${id}`, data),
   deleteServer: (id: number) => api.delete(`/servers/${id}`),
   testConnection: (id: number) => api.post(`/servers/${id}/test-connection`),
+  checkServerStatus: (id: number) => api.post<{ status: string; message: string }>(`/servers/${id}/check-status`),
   
   // Config management
   getConfigFiles: (id: number, path: string = '') => 
     api.get<ConfigFile[]>(`/servers/${id}/config/files`, { params: { path } }),
-  getConfigContent: (id: number, filePath: string) => 
-    api.get<{ content: string; file_path: string }>(`/servers/${id}/config/files/${filePath}`),
-  saveConfigContent: (id: number, filePath: string, content: string, autoBackup: boolean = true) => 
-    api.put(`/servers/${id}/config/files/${filePath}`, { content, autoBackup }),
+  getConfigContent: (id: number, filePath: string) => {
+    // Do NOT remove leading slash - let backend handle path normalization
+    // Just encode the path for safe URL transmission
+    return api.get<{ content: string; file_path: string }>(`/servers/${id}/config/files/${encodeURIComponent(filePath)}`)
+  },
+  saveConfigContent: (id: number, filePath: string, content: string, autoBackup: boolean = true) => {
+    // Do NOT remove leading slash - let backend handle path normalization
+    return api.put(`/servers/${id}/config/files/${encodeURIComponent(filePath)}`, { content, autoBackup })
+  },
   testConfig: (id: number) => api.post(`/servers/${id}/config/test`),
   
   // Logs

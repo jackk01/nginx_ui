@@ -83,7 +83,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted } from 'vue'
+import { ref, reactive, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox, FormInstance } from 'element-plus'
 import { serversApi } from '@/api/servers'
@@ -119,12 +119,25 @@ async function fetchServers() {
   try {
     const response = await serversApi.getServers()
     servers.value = response.data
+
+    // Check status for each server
+    for (const server of servers.value) {
+      try {
+        const statusResponse = await serversApi.checkServerStatus(server.id)
+        server.status = statusResponse.data.status
+      } catch (e) {
+        // Ignore status check errors
+      }
+    }
   } catch (error) {
     ElMessage.error('获取服务器列表失败')
   } finally {
     loading.value = false
   }
 }
+
+// Auto refresh server status every 30 seconds
+let statusInterval: ReturnType<typeof setInterval> | null = null
 
 async function handleSubmit() {
   if (!formRef.value) return
@@ -169,6 +182,14 @@ function goToLogs(id: number) {
 
 onMounted(() => {
   fetchServers()
+  // Auto refresh server status every 30 seconds
+  statusInterval = setInterval(fetchServers, 30000)
+})
+
+onUnmounted(() => {
+  if (statusInterval) {
+    clearInterval(statusInterval)
+  }
 })
 </script>
 

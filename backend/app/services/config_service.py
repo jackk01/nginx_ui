@@ -220,13 +220,60 @@ class LogService:
     async def list_log_files(self) -> List[Dict]:
         """List log files"""
         client = self._get_client()
-        
+
         try:
             if isinstance(client, LocalClient):
                 return self._list_local_directory(self.nginx_log_path)
             else:
-                return await client.list_directory(self.nginx_log_path)
+                # For remote SSH, use stat to get file details
+                return await self._list_remote_directory(self.nginx_log_path)
         except Exception:
+            return []
+
+    async def _list_remote_directory(self, dir_path: str) -> List[Dict]:
+        """List remote directory with file sizes"""
+        client = self._get_client()
+        files = []
+
+        try:
+            # List all files in directory with size info
+            exit_code, stdout, stderr = await client.execute_command(
+                f"ls -la {dir_path} 2>/dev/null"
+            )
+
+            if exit_code != 0:
+                return []
+
+            for line in stdout.strip().split('\n'):
+                if not line or line.startswith('total'):
+                    continue
+
+                parts = line.split()
+                if len(parts) >= 9:
+                    is_file = parts[0].startswith('-')
+                    if not is_file:
+                        continue
+
+                    # Check if it's a log file
+                    filename = ' '.join(parts[8:])
+                    if not (filename.endswith('.log') or filename in ['access.log', 'error.log']):
+                        continue
+
+                    try:
+                        size = int(parts[4])
+                    except (ValueError, IndexError):
+                        size = 0
+
+                    files.append({
+                        'file_path': f"{dir_path.rstrip('/')}/{filename}",
+                        'file_name': filename,
+                        'size': size,
+                        'modified_time': ''
+                    })
+
+            return files
+        except Exception as e:
+            print(f"Error listing remote log files: {e}")
             return []
     
     def _list_local_directory(self, dir_path: str) -> List[Dict]:

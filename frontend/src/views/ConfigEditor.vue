@@ -16,7 +16,34 @@
         </el-button>
       </template>
     </el-page-header>
-    
+
+    <!-- Breadcrumb navigation -->
+    <div class="breadcrumb-nav">
+      <el-breadcrumb separator="/">
+        <el-breadcrumb-item :clickable="currentPath !== ''" @click="goToRoot">
+          <el-icon><HomeFilled /></el-icon>
+          根目录
+        </el-breadcrumb-item>
+        <el-breadcrumb-item v-for="(crumb, index) in breadcrumbs" :key="index">
+          <span
+            :class="{ 'crumb-clickable': index < breadcrumbs.length - 1 }"
+            @click="goToBreadcrumb(index)"
+          >
+            {{ crumb }}
+          </span>
+        </el-breadcrumb-item>
+      </el-breadcrumb>
+      <el-button
+        v-if="currentPath !== ''"
+        size="small"
+        @click="goToParent"
+        style="margin-left: 12px;"
+      >
+        <el-icon><ArrowLeft /></el-icon>
+        返回上级
+      </el-button>
+    </div>
+
     <el-row :gutter="20" style="margin-top: 20px;">
       <!-- File Tree -->
       <el-col :span="4">
@@ -71,7 +98,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, computed } from 'vue'
 import { useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { serversApi, ConfigFile } from '@/api/servers'
@@ -89,6 +116,13 @@ const originalContent = ref('')
 const hasChanges = ref(false)
 const showTestResult = ref(false)
 const testResult = ref<{ success: boolean; output: string } | null>(null)
+const currentPath = ref('')
+
+// Computed breadcrumbs based on current path
+const breadcrumbs = computed(() => {
+  if (!currentPath.value) return []
+  return currentPath.value.split('/').filter(p => p)
+})
 
 const treeProps = {
   children: 'children',
@@ -109,12 +143,13 @@ async function fetchConfigFiles(path: string = '') {
 
 async function handleNodeClick(data: ConfigFile) {
   if (data.is_directory) {
-    // Fetch subdirectory contents
-    const relativePath = data.file_path.replace('/etc/nginx/', '')
-    await fetchConfigFiles(relativePath)
+    // Fetch subdirectory contents - store the path relative to nginx conf path
+    const relativePath = data.file_path.replace(server.nginx_conf_path + '/', '').replace(server.nginx_conf_path, '')
+    currentPath.value = relativePath.replace(/^\//, '')
+    await fetchConfigFiles(currentPath.value)
     return
   }
-  
+
   // Load file content
   currentFile.value = data.file_path
   try {
@@ -126,6 +161,33 @@ async function handleNodeClick(data: ConfigFile) {
     ElMessage.error('读取配置文件失败')
   }
 }
+
+// Go to root directory
+function goToRoot() {
+  currentPath.value = ''
+  fetchConfigFiles('')
+}
+
+// Go to parent directory
+function goToParent() {
+  if (!currentPath.value) return
+  const parts = currentPath.value.split('/')
+  parts.pop()
+  currentPath.value = parts.join('/')
+  fetchConfigFiles(currentPath.value)
+}
+
+// Go to specific breadcrumb
+function goToBreadcrumb(index: number) {
+  const parts = currentPath.value.split('/')
+  currentPath.value = parts.slice(0, index + 1).join('/')
+  fetchConfigFiles(currentPath.value)
+}
+
+// Get nginx conf path from server (to be set on mount)
+const server = ref({
+  nginx_conf_path: '/etc/nginx'
+})
 
 const handleContentChange = useDebounceFn(() => {
   hasChanges.value = content.value !== originalContent.value
@@ -173,12 +235,37 @@ async function handleReload() {
   }
 }
 
-onMounted(() => {
+onMounted(async () => {
+  // Get server info to know nginx_conf_path
+  try {
+    const response = await serversApi.getServer(serverId)
+    server.value = response.data
+  } catch (error) {
+    console.error('Failed to get server info:', error)
+  }
   fetchConfigFiles()
 })
 </script>
 
 <style scoped>
+.breadcrumb-nav {
+  display: flex;
+  align-items: center;
+  padding: 12px 16px;
+  background: #fff;
+  border-radius: 4px;
+  margin-top: 16px;
+}
+
+.crumb-clickable {
+  cursor: pointer;
+  color: #409EFF;
+}
+
+.crumb-clickable:hover {
+  text-decoration: underline;
+}
+
 .file-tree-card {
   height: calc(100vh - 180px);
   overflow: auto;
