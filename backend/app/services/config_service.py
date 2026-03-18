@@ -305,22 +305,33 @@ class LogService:
         
         try:
             if isinstance(client, LocalClient):
-                # Use tail command for efficiency
-                result = subprocess.run(
-                    f"tail -n {lines} {file_path} 2>/dev/null | wc -l",
-                    shell=True,
-                    capture_output=True,
-                    text=True
-                )
-                total_lines = int(result.stdout.strip()) if result.returncode == 0 else 0
-                
-                result = subprocess.run(
-                    f"tail -n {lines} {file_path}",
-                    shell=True,
-                    capture_output=True,
-                    text=True
-                )
-                content = result.stdout if result.returncode == 0 else ""
+                # Use Python to read file directly instead of subprocess
+                # This is more reliable and provides better error handling
+                try:
+                    with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
+                        all_lines = f.readlines()
+                        total_lines = len(all_lines)
+                        # Get last N lines
+                        content_lines = all_lines[-lines:] if lines > 0 else all_lines
+                        content = ''.join(content_lines)
+                except PermissionError:
+                    return {
+                        "content": "Error: Permission denied. Please check file permissions.",
+                        "total_lines": 0,
+                        "file_path": file_path
+                    }
+                except FileNotFoundError:
+                    return {
+                        "content": f"Error: File not found: {file_path}",
+                        "total_lines": 0,
+                        "file_path": file_path
+                    }
+                except Exception as e:
+                    return {
+                        "content": f"Error reading log: {str(e)}",
+                        "total_lines": 0,
+                        "file_path": file_path
+                    }
                 
                 return {
                     "content": content,
