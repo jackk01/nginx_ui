@@ -294,7 +294,13 @@ async def get_config_files(
     
     # Decode URL-encoded path
     decoded_path = urllib.parse.unquote(path)
-    target_path = f"{server.nginx_conf_path}/{decoded_path}" if decoded_path else server.nginx_conf_path
+    # Support both relative path and absolute path for robust breadcrumb navigation.
+    if not decoded_path:
+        target_path = server.nginx_conf_path
+    elif decoded_path.startswith('/'):
+        target_path = decoded_path
+    else:
+        target_path = f"{server.nginx_conf_path}/{decoded_path}"
     
     files = await config_service.list_config_files(target_path)
     return files
@@ -481,7 +487,10 @@ async def get_log_content(
     
     log_service = LogService(server_to_dict(server))
     decoded_path = urllib.parse.unquote(log_path)
-    target_path = f"{server.nginx_log_path}/{decoded_path}" if not log_path.startswith('/') else log_path
+    if decoded_path.startswith('/'):
+        target_path = decoded_path
+    else:
+        target_path = f"{server.nginx_log_path}/{decoded_path}"
     
     log_data = await log_service.read_log_file(target_path, lines)
     return log_data

@@ -1,10 +1,14 @@
 <template>
   <div class="server-detail">
-    <el-page-header @back="$router.back()" content="服务器详情">
+    <el-page-header title="" @back="$router.back()" content="服务器详情">
       <template #extra>
-        <el-button type="primary" @click="$router.push(`/servers/${serverId}/config`)">
+        <el-button @click="$router.push(`/servers/${serverId}/config`)">
+          <el-icon><Setting /></el-icon>
+          服务器配置
+        </el-button>
+        <el-button type="primary" @click="$router.push(`/servers/${serverId}/nginx-config`)">
           <el-icon><Document /></el-icon>
-          配置管理
+          配置文件管理
         </el-button>
         <el-button @click="$router.push(`/servers/${serverId}/logs`)">
           <el-icon><Files /></el-icon>
@@ -200,6 +204,10 @@ onMounted(() => {
 </script>
 
 <style scoped>
+:deep(.el-page-header__title) {
+  display: none;
+}
+
 .control-buttons {
   display: flex;
   gap: 12px;

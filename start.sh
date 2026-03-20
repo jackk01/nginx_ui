@@ -1,4 +1,6 @@
 cd backend
+# mkdir data
+
 python -m venv venv
 source venv/bin/activate
 

@@ -1,6 +1,6 @@
 <template>
   <div class="log-viewer">
-    <el-page-header @back="$router.back()" content="日志查看">
+    <el-page-header title="" @back="$router.back()" content="日志查看">
       <template #extra>
         <el-select v-model="logLines" style="width: 120px; margin-right: 12px;" @change="handleLinesChange">
           <el-option label="100行" :value="100" />
@@ -8,10 +8,12 @@
           <el-option label="500行" :value="500" />
           <el-option label="1000行" :value="1000" />
         </el-select>
-        <el-button @click="toggleAutoRefresh" :type="autoRefresh ? 'success' : 'default'">
-          <el-icon><Clock /></el-icon>
-          {{ autoRefresh ? '实时刷新中' : '自动刷新' }}
-        </el-button>
+        <el-switch
+          v-model="tailFollowing"
+          :disabled="!currentLog"
+          style="margin-right: 12px;"
+          @change="handleTailSwitchChange"
+        />
         <el-button @click="handleRefresh">
           <el-icon><Refresh /></el-icon>
           刷新
@@ -111,7 +113,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted, watch, nextTick, computed } from 'vue'
+import { ref, onMounted, onUnmounted, nextTick } from 'vue'
 import { useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { serversApi } from '@/api/servers'
@@ -125,21 +127,12 @@ const currentLog = ref('')
 const logContent = ref('')
 const originalContent = ref('')
 const searchKeyword = ref('')
-const autoRefresh = ref(false)
+const tailFollowing = ref(false)
 const logContainer = ref<HTMLElement>()
 const logLines = ref(200)
 const matchedLines = ref(0)
 
 let refreshInterval: ReturnType<typeof setInterval> | null = null
-
-// Get matched lines count
-const matchedCount = computed(() => {
-  if (!searchKeyword.value || !originalContent.value) return 0
-  const lines = originalContent.value.split('\n')
-  return lines.filter(line =>
-    line.toLowerCase().includes(searchKeyword.value.toLowerCase())
-  ).length
-})
 
 async function fetchLogFiles() {
   try {
@@ -153,6 +146,9 @@ async function fetchLogFiles() {
 async function selectLog(filePath: string) {
   currentLog.value = filePath
   await fetchLogContent()
+  if (tailFollowing.value) {
+    startTailFollowing()
+  }
 }
 
 async function fetchLogContent() {
@@ -213,14 +209,30 @@ function handleDownload() {
   URL.revokeObjectURL(url)
 }
 
-function toggleAutoRefresh() {
-  autoRefresh.value = !autoRefresh.value
+function startTailFollowing() {
+  stopTailFollowing()
+  refreshInterval = setInterval(fetchLogContent, 1000)
+}
 
-  if (autoRefresh.value) {
-    refreshInterval = setInterval(fetchLogContent, 3000)
-  } else if (refreshInterval) {
+function stopTailFollowing() {
+  if (refreshInterval) {
     clearInterval(refreshInterval)
     refreshInterval = null
+  }
+}
+
+function handleTailSwitchChange(enabled: boolean) {
+  if (enabled && !currentLog.value) {
+    tailFollowing.value = false
+    ElMessage.warning('请先选择日志文件')
+    return
+  }
+
+  if (enabled) {
+    fetchLogContent()
+    startTailFollowing()
+  } else {
+    stopTailFollowing()
   }
 }
 
@@ -253,13 +265,15 @@ onMounted(() => {
 })
 
 onUnmounted(() => {
-  if (refreshInterval) {
-    clearInterval(refreshInterval)
-  }
+  stopTailFollowing()
 })
 </script>
 
 <style scoped>
+:deep(.el-page-header__title) {
+  display: none;
+}
+
 .log-list-card {
   height: 100%;
   display: flex;
@@ -377,4 +391,5 @@ onUnmounted(() => {
   font-size: 12px;
   color: #909399;
 }
+
 </style>

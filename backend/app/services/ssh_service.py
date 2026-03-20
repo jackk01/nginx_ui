@@ -1,8 +1,6 @@
-import paramiko
 import asyncssh
 from typing import Optional, Tuple
 from pathlib import Path
-from app.core.config import settings
 
 
 class SSHClient:
@@ -21,10 +19,13 @@ class SSHClient:
         self.username = username
         self.password = password
         self.key_path = key_path
-        self._client: Optional[asyncssh.SSHClient] = None
+        self._client: Optional[asyncssh.SSHClientConnection] = None
     
     async def connect(self) -> bool:
         """Establish SSH connection"""
+        if self._client is not None:
+            return True
+
         try:
             connect_kwargs = {
                 "host": self.host,
@@ -32,17 +33,17 @@ class SSHClient:
                 "username": self.username,
                 "known_hosts": None,  # Disable host key checking for simplicity
             }
-            
+
             if self.key_path:
-                connect_kwargs["client_keys"] = [self.key_path]
-            elif self.password:
+                connect_kwargs["client_keys"] = [str(Path(self.key_path).expanduser())]
+
+            if self.password:
                 connect_kwargs["password"] = self.password
-            
-            self._client = asyncssh.SSHClient()
-            self._client.set_missing_host_key_policy(asyncssh.MissingHostKeyPolicy.accept)
-            await self._client.connect(**connect_kwargs)
+
+            self._client = await asyncssh.connect(**connect_kwargs)
             return True
         except Exception as e:
+            self._client = None
             print(f"SSH connection failed: {e}")
             return False
     
@@ -51,31 +52,35 @@ class SSHClient:
         if self._client:
             self._client.close()
             await self._client.wait_closed()
+            self._client = None
+
+    async def _ensure_connected(self):
+        """Ensure an active SSH connection exists before remote operations."""
+        if self._client is None:
+            success = await self.connect()
+            if not success:
+                raise RuntimeError(
+                    f"Failed to connect to SSH server {self.username}@{self.host}:{self.port}"
+                )
     
     async def execute_command(self, command: str) -> Tuple[int, str, str]:
         """Execute command on remote server"""
-        if not self._client:
-            raise RuntimeError("SSH client not connected")
-        
+        await self._ensure_connected()
         result = await self._client.run(command)
         return result.exit_status, result.stdout, result.stderr
     
     async def read_file(self, file_path: str) -> str:
         """Read file content from remote server"""
-        if not self._client:
-            raise RuntimeError("SSH client not connected")
-        
-        async with self._client.open_sftp() as sftp:
+        await self._ensure_connected()
+        async with self._client.start_sftp_client() as sftp:
             async with sftp.open(file_path, 'r') as f:
                 return await f.read()
     
     async def write_file(self, file_path: str, content: str) -> bool:
         """Write content to file on remote server"""
-        if not self._client:
-            raise RuntimeError("SSH client not connected")
-        
+        await self._ensure_connected()
         try:
-            async with self._client.open_sftp() as sftp:
+            async with self._client.start_sftp_client() as sftp:
                 async with sftp.open(file_path, 'w') as f:
                     await f.write(content)
             return True
@@ -85,9 +90,7 @@ class SSHClient:
     
     async def list_directory(self, dir_path: str) -> list:
         """List directory contents"""
-        if not self._client:
-            raise RuntimeError("SSH client not connected")
-        
+        await self._ensure_connected()
         result = await self._client.run(f"ls -la {dir_path}")
         if result.exit_status != 0:
             return []
@@ -111,9 +114,7 @@ class SSHClient:
     
     async def file_exists(self, file_path: str) -> bool:
         """Check if file exists"""
-        if not self._client:
-            raise RuntimeError("SSH client not connected")
-        
+        await self._ensure_connected()
         result = await self._client.run(f"test -e {file_path} && echo 'exists' || echo 'not_exists'")
         return 'exists' in result.stdout
 

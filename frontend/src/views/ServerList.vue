@@ -32,7 +32,7 @@
         <el-table-column label="操作" width="280">
           <template #default="{ row }">
             <el-button type="primary" link @click="goToDetail(row.id)">详情</el-button>
-            <el-button type="primary" link @click="goToConfig(row.id)">配置</el-button>
+            <el-button type="primary" link @click="goToConfig(row.id)">服务器配置</el-button>
             <el-button type="primary" link @click="goToLogs(row.id)">日志</el-button>
             <el-button type="danger" link @click="handleDelete(row.id)">删除</el-button>
           </template>

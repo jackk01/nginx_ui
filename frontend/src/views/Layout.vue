@@ -1,33 +1,23 @@
 <template>
   <el-container class="layout-container">
     <!-- Sidebar -->
-    <el-aside width="220px">
-      <div class="logo">
-        <el-icon :size="28" color="#409EFF"><Monitor /></el-icon>
-        <span>NGINX UI</span>
+    <el-aside :width="asideWidth">
+      <div class="logo" :class="{ collapsed: isSidebarCollapsed }">
+        <span>{{ isSidebarCollapsed ? 'N' : 'NGINX UI' }}</span>
       </div>
       
       <el-menu
         :default-active="activeMenu"
+        :collapse="isSidebarCollapsed"
         router
         class="sidebar-menu"
         background-color="#304156"
         text-color="#bfcbd9"
         active-text-color="#409EFF"
       >
-        <el-menu-item index="/">
-          <el-icon><House /></el-icon>
-          <span>仪表盘</span>
-        </el-menu-item>
-        
         <el-menu-item index="/servers">
-          <el-icon><Server /></el-icon>
+          <el-icon><DataBoard /></el-icon>
           <span>服务器管理</span>
-        </el-menu-item>
-        
-        <el-menu-item index="/settings">
-          <el-icon><Setting /></el-icon>
-          <span>系统设置</span>
         </el-menu-item>
       </el-menu>
     </el-aside>
@@ -36,6 +26,12 @@
     <el-container>
       <el-header>
         <div class="header-left">
+          <el-button text @click="toggleSidebar" class="collapse-btn">
+            <el-icon :size="18">
+              <Fold v-if="!isSidebarCollapsed" />
+              <Expand v-else />
+            </el-icon>
+          </el-button>
           <h2>{{ pageTitle }}</h2>
         </div>
         <div class="header-right">
@@ -61,23 +57,37 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import { DataBoard, Expand, Fold, User } from '@element-plus/icons-vue'
 import { useAuthStore } from '@/stores/auth'
 
 const route = useRoute()
 const router = useRouter()
 const authStore = useAuthStore()
+const isSidebarCollapsed = ref(false)
+const asideWidth = computed(() => (isSidebarCollapsed.value ? '64px' : '220px'))
 
-const activeMenu = computed(() => route.path)
+const activeMenu = computed(() => {
+  if (route.path.startsWith('/servers')) return '/servers'
+  return route.path
+})
 
 const pageTitle = computed(() => {
   const titles: Record<string, string> = {
-    '/': '仪表盘',
     '/servers': '服务器管理',
-    '/settings': '系统设置'
+    '/servers/:id': '服务器详情',
+    '/servers/:id/config': '服务器配置',
+    '/servers/:id/nginx-config': '配置文件管理',
+    '/servers/:id/logs': '日志查看'
   }
-  return titles[route.path] || 'NGINX UI'
+  if (route.path.startsWith('/servers/')) {
+    if (route.path.endsWith('/config')) return titles['/servers/:id/config']
+    if (route.path.endsWith('/nginx-config')) return titles['/servers/:id/nginx-config']
+    if (route.path.endsWith('/logs')) return titles['/servers/:id/logs']
+    return titles['/servers/:id']
+  }
+  return titles[route.path] || '服务器管理'
 })
 
 function handleCommand(command: string) {
@@ -85,6 +95,10 @@ function handleCommand(command: string) {
     authStore.logout()
     router.push('/login')
   }
+}
+
+function toggleSidebar() {
+  isSidebarCollapsed.value = !isSidebarCollapsed.value
 }
 </script>
 
@@ -95,18 +109,26 @@ function handleCommand(command: string) {
 
 .el-aside {
   background-color: #304156;
+  transition: width 0.2s ease;
+  overflow: hidden;
 }
 
 .logo {
   display: flex;
   align-items: center;
-  justify-content: center;
-  gap: 10px;
+  justify-content: flex-start;
+  padding-left: 48px;
   height: 60px;
   color: white;
   font-size: 18px;
   font-weight: bold;
   border-bottom: 1px solid #1f2d3d;
+  white-space: nowrap;
+}
+
+.logo.collapsed {
+  justify-content: center;
+  padding-left: 0;
 }
 
 .sidebar-menu {
@@ -127,6 +149,16 @@ function handleCommand(command: string) {
   font-size: 18px;
   font-weight: 500;
   color: #333;
+}
+
+.header-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.collapse-btn {
+  padding: 6px;
 }
 
 .user-info {

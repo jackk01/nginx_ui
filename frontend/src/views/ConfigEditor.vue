@@ -1,310 +1,155 @@
 <template>
-  <div class="config-editor">
-    <el-page-header @back="$router.back()" content="配置管理">
+  <div class="server-config">
+    <el-page-header title="" @back="$router.back()" content="服务器配置">
       <template #extra>
-        <el-button type="primary" @click="handleSave" :loading="saving">
+        <el-button type="primary" :loading="saving" @click="handleSave">
           <el-icon><DocumentChecked /></el-icon>
-          保存
-        </el-button>
-        <el-button @click="handleTest">
-          <el-icon><Check /></el-icon>
-          测试配置
-        </el-button>
-        <el-button @click="handleReload">
-          <el-icon><Refresh /></el-icon>
-          重载配置
+          保存配置
         </el-button>
       </template>
     </el-page-header>
 
-    <!-- Breadcrumb navigation -->
-    <div class="breadcrumb-nav">
-      <el-breadcrumb separator="/">
-        <el-breadcrumb-item :clickable="currentPath !== ''" @click="goToRoot">
-          <el-icon><HomeFilled /></el-icon>
-          根目录
-        </el-breadcrumb-item>
-        <el-breadcrumb-item v-for="(crumb, index) in breadcrumbs" :key="index">
-          <span
-            :class="{ 'crumb-clickable': index < breadcrumbs.length - 1 }"
-            @click="goToBreadcrumb(index)"
-          >
-            {{ crumb }}
-          </span>
-        </el-breadcrumb-item>
-      </el-breadcrumb>
-      <el-button
-        v-if="currentPath !== ''"
-        size="small"
-        @click="goToParent"
-        style="margin-left: 12px;"
-      >
-        <el-icon><ArrowLeft /></el-icon>
-        返回上级
-      </el-button>
-    </div>
+    <el-card style="margin-top: 20px; max-width: 760px;">
+      <el-form ref="formRef" :model="form" :rules="rules" label-width="120px">
+        <el-form-item label="服务器名称" prop="name">
+          <el-input v-model="form.name" placeholder="my-nginx-server" />
+        </el-form-item>
 
-    <el-row :gutter="20" style="margin-top: 20px;">
-      <!-- File Tree -->
-      <el-col :span="4">
-        <el-card class="file-tree-card">
-          <template #header>
-            <span>配置文件</span>
-          </template>
-          <el-tree
-            :data="configFiles"
-            :props="treeProps"
-            @node-click="handleNodeClick"
-            highlight-current
-            default-expand-all
-          >
-            <template #default="{ node, data }">
-              <span class="tree-node">
-                <el-icon v-if="data.is_directory"><Folder /></el-icon>
-                <el-icon v-else><Document /></el-icon>
-                <span>{{ data.file_name }}</span>
-              </span>
-            </template>
-          </el-tree>
-        </el-card>
-      </el-col>
-      
-      <!-- Editor -->
-      <el-col :span="20">
-        <el-card class="editor-card">
-          <template #header>
-            <div class="editor-header">
-              <span>{{ currentFile || '请选择配置文件' }}</span>
-              <el-tag v-if="hasChanges" type="warning" size="small">已修改</el-tag>
-            </div>
-          </template>
-          <div class="editor-container">
-            <textarea
-              v-model="content"
-              class="config-textarea"
-              spellcheck="false"
-              @input="handleContentChange"
-            ></textarea>
-          </div>
-        </el-card>
-      </el-col>
-    </el-row>
-    
-    <!-- Test Result Dialog -->
-    <el-dialog v-model="showTestResult" title="配置测试结果" width="500px">
-      <el-alert :type="testResult?.success ? 'success' : 'error'" :title="testResult?.output" show-icon />
-    </el-dialog>
+        <el-form-item label="模式" prop="mode">
+          <el-radio-group v-model="form.mode">
+            <el-radio label="local">本地</el-radio>
+            <el-radio label="remote">远程</el-radio>
+          </el-radio-group>
+        </el-form-item>
+
+        <el-form-item label="主机地址" prop="host" v-if="form.mode === 'remote'">
+          <el-input v-model="form.host" placeholder="192.168.1.100" />
+        </el-form-item>
+
+        <el-form-item label="SSH端口" prop="port" v-if="form.mode === 'remote'">
+          <el-input-number v-model="form.port" :min="1" :max="65535" />
+        </el-form-item>
+
+        <el-form-item label="用户名" prop="username" v-if="form.mode === 'remote'">
+          <el-input v-model="form.username" placeholder="root" />
+        </el-form-item>
+
+        <el-form-item label="密码" prop="password" v-if="form.mode === 'remote'">
+          <el-input v-model="form.password" type="password" show-password placeholder="留空则保持不变" />
+        </el-form-item>
+
+        <el-divider content-position="left">Nginx 基础路径</el-divider>
+
+        <el-form-item label="NGINX路径" prop="nginx_path">
+          <el-input v-model="form.nginx_path" placeholder="/usr/sbin/nginx" />
+        </el-form-item>
+
+        <el-form-item label="配置目录" prop="nginx_conf_path">
+          <el-input v-model="form.nginx_conf_path" placeholder="/etc/nginx" />
+        </el-form-item>
+
+        <el-form-item label="日志目录" prop="nginx_log_path">
+          <el-input v-model="form.nginx_log_path" placeholder="/var/log/nginx" />
+        </el-form-item>
+      </el-form>
+    </el-card>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, computed } from 'vue'
+import { reactive, ref, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
-import { ElMessage } from 'element-plus'
-import { serversApi, ConfigFile } from '@/api/servers'
-import { useDebounceFn } from '@vueuse/core'
+import { ElMessage, type FormInstance } from 'element-plus'
+import { serversApi } from '@/api/servers'
 
 const route = useRoute()
 const serverId = Number(route.params.id)
 
-const loading = ref(false)
+const formRef = ref<FormInstance>()
 const saving = ref(false)
-const configFiles = ref<ConfigFile[]>([])
-const currentFile = ref('')
-const content = ref('')
-const originalContent = ref('')
-const hasChanges = ref(false)
-const showTestResult = ref(false)
-const testResult = ref<{ success: boolean; output: string } | null>(null)
-const currentPath = ref('')
 
-// Computed breadcrumbs based on current path
-const breadcrumbs = computed(() => {
-  if (!currentPath.value) return []
-  return currentPath.value.split('/').filter(p => p)
+const form = reactive({
+  name: '',
+  host: 'localhost',
+  port: 22,
+  username: '',
+  password: '',
+  mode: 'local' as 'local' | 'remote',
+  nginx_path: '/usr/sbin/nginx',
+  nginx_conf_path: '/etc/nginx',
+  nginx_log_path: '/var/log/nginx'
 })
 
-const treeProps = {
-  children: 'children',
-  label: 'file_name'
+const rules = {
+  name: [{ required: true, message: '请输入服务器名称', trigger: 'blur' }],
+  host: [{ required: true, message: '请输入主机地址', trigger: 'blur' }]
 }
 
-async function fetchConfigFiles(path: string = '') {
-  loading.value = true
-  try {
-    const response = await serversApi.getConfigFiles(serverId, path)
-    configFiles.value = response.data
-  } catch (error) {
-    ElMessage.error('获取配置文件列表失败')
-  } finally {
-    loading.value = false
-  }
-}
-
-async function handleNodeClick(data: ConfigFile) {
-  if (data.is_directory) {
-    // Fetch subdirectory contents - store the path relative to nginx conf path
-    const relativePath = data.file_path.replace(server.nginx_conf_path + '/', '').replace(server.nginx_conf_path, '')
-    currentPath.value = relativePath.replace(/^\//, '')
-    await fetchConfigFiles(currentPath.value)
-    return
-  }
-
-  // Load file content
-  currentFile.value = data.file_path
-  try {
-    const response = await serversApi.getConfigContent(serverId, data.file_path)
-    content.value = response.data.content
-    originalContent.value = response.data.content
-    hasChanges.value = false
-  } catch (error) {
-    ElMessage.error('读取配置文件失败')
-  }
-}
-
-// Go to root directory
-function goToRoot() {
-  currentPath.value = ''
-  fetchConfigFiles('')
-}
-
-// Go to parent directory
-function goToParent() {
-  if (!currentPath.value) return
-  const parts = currentPath.value.split('/')
-  parts.pop()
-  currentPath.value = parts.join('/')
-  fetchConfigFiles(currentPath.value)
-}
-
-// Go to specific breadcrumb
-function goToBreadcrumb(index: number) {
-  const parts = currentPath.value.split('/')
-  currentPath.value = parts.slice(0, index + 1).join('/')
-  fetchConfigFiles(currentPath.value)
-}
-
-// Get nginx conf path from server (to be set on mount)
-const server = ref({
-  nginx_conf_path: '/etc/nginx'
-})
-
-const handleContentChange = useDebounceFn(() => {
-  hasChanges.value = content.value !== originalContent.value
-}, 500)
-
-async function handleSave() {
-  if (!currentFile.value) {
-    ElMessage.warning('请先选择配置文件')
-    return
-  }
-  
-  saving.value = true
-  try {
-    await serversApi.saveConfigContent(serverId, currentFile.value, content.value)
-    ElMessage.success('保存成功')
-    originalContent.value = content.value
-    hasChanges.value = false
-  } catch (error) {
-    ElMessage.error('保存失败')
-  } finally {
-    saving.value = false
-  }
-}
-
-async function handleTest() {
-  try {
-    const response = await serversApi.testConfig(serverId)
-    testResult.value = response.data
-    showTestResult.value = true
-  } catch (error) {
-    ElMessage.error('测试配置失败')
-  }
-}
-
-async function handleReload() {
-  try {
-    const response = await serversApi.reloadNginx(serverId)
-    if (response.data.success) {
-      ElMessage.success('配置已重载')
-    } else {
-      ElMessage.error(response.data.message)
-    }
-  } catch (error) {
-    ElMessage.error('重载失败')
-  }
-}
-
-onMounted(async () => {
-  // Get server info to know nginx_conf_path
+async function fetchServerConfig() {
   try {
     const response = await serversApi.getServer(serverId)
-    server.value = response.data
+    const server = response.data
+    form.name = server.name
+    form.host = server.host
+    form.port = server.port
+    form.username = server.username || ''
+    form.password = ''
+    form.mode = server.mode
+    form.nginx_path = server.nginx_path
+    form.nginx_conf_path = server.nginx_conf_path
+    form.nginx_log_path = server.nginx_log_path
   } catch (error) {
-    console.error('Failed to get server info:', error)
+    ElMessage.error('获取服务器配置失败')
   }
-  fetchConfigFiles()
+}
+
+async function handleSave() {
+  if (!formRef.value) return
+
+  await formRef.value.validate(async (valid) => {
+    if (!valid) return
+
+    saving.value = true
+    try {
+      const payload: Record<string, unknown> = {
+        name: form.name,
+        mode: form.mode,
+        nginx_path: form.nginx_path,
+        nginx_conf_path: form.nginx_conf_path,
+        nginx_log_path: form.nginx_log_path
+      }
+
+      if (form.mode === 'remote') {
+        payload.host = form.host
+        payload.port = form.port
+        payload.username = form.username
+        if (form.password.trim()) {
+          payload.password = form.password
+        }
+      } else {
+        payload.host = 'localhost'
+        payload.port = 22
+        payload.username = ''
+      }
+
+      await serversApi.updateServer(serverId, payload)
+      ElMessage.success('服务器配置已保存')
+      form.password = ''
+    } catch (error: any) {
+      ElMessage.error(error?.response?.data?.detail || '保存失败')
+    } finally {
+      saving.value = false
+    }
+  })
+}
+
+onMounted(() => {
+  fetchServerConfig()
 })
 </script>
 
 <style scoped>
-.breadcrumb-nav {
-  display: flex;
-  align-items: center;
-  padding: 12px 16px;
-  background: #fff;
-  border-radius: 4px;
-  margin-top: 16px;
-}
-
-.crumb-clickable {
-  cursor: pointer;
-  color: #409EFF;
-}
-
-.crumb-clickable:hover {
-  text-decoration: underline;
-}
-
-.file-tree-card {
-  height: calc(100vh - 180px);
-  overflow: auto;
-}
-
-.editor-card {
-  height: calc(100vh - 180px);
-  display: flex;
-  flex-direction: column;
-}
-
-.editor-header {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-
-.editor-container {
-  flex: 1;
-  min-height: 400px;
-}
-
-.config-textarea {
-  width: 100%;
-  height: 100%;
-  min-height: 400px;
-  padding: 12px;
-  font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
-  font-size: 13px;
-  line-height: 1.5;
-  border: none;
-  resize: none;
-  background: #1e1e1e;
-  color: #d4d4d4;
-}
-
-.tree-node {
-  display: flex;
-  align-items: center;
-  gap: 6px;
+:deep(.el-page-header__title) {
+  display: none;
 }
 </style>

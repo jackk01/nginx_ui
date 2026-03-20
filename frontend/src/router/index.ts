@@ -16,8 +16,7 @@ const routes: RouteRecordRaw[] = [
     children: [
       {
         path: '',
-        name: 'Dashboard',
-        component: () => import('@/views/Dashboard.vue')
+        redirect: '/servers'
       },
       {
         path: 'servers',
@@ -33,6 +32,11 @@ const routes: RouteRecordRaw[] = [
         path: 'servers/:id/config',
         name: 'ConfigEditor',
         component: () => import('@/views/ConfigEditor.vue')
+      },
+      {
+        path: 'servers/:id/nginx-config',
+        name: 'NginxConfigEditor',
+        component: () => import('@/views/NginxConfigEditor.vue')
       },
       {
         path: 'servers/:id/logs',
@@ -60,7 +64,7 @@ router.beforeEach((to, from, next) => {
   if (to.meta.requiresAuth !== false && !authStore.isAuthenticated) {
     next('/login')
   } else if (to.path === '/login' && authStore.isAuthenticated) {
-    next('/')
+    next('/servers')
   } else {
     next()
   }

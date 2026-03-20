@@ -31,7 +31,7 @@ export const serversApi = {
   // Logs
   getLogFiles: (id: number) => api.get(`/servers/${id}/logs`),
   getLogContent: (id: number, logPath: string, lines: number = 100) => 
-    api.get(`/servers/${id}/logs/${logPath}`, { params: { lines } }),
+    api.get(`/servers/${id}/logs/${encodeURIComponent(logPath)}`, { params: { lines } }),
   
   // Nginx control
   getNginxStatus: (id: number) => api.get<NginxStatus>(`/servers/${id}/nginx/status`),
