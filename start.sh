@@ -1,3 +1,7 @@
+cd backend
+python -m venv venv
+source venv/bin/activate
+
 pip install -r requirements.txt
 python -m uvicorn app.main:app --host 0.0.0.0 --port 8000
 # 默认管理员账户：admin / admin123

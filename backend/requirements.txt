@@ -13,7 +13,7 @@ python-socketio==5.10.0
 asyncui==1.0.0
 httpx==0.25.1
 email-validator==2.1.0
-pysqlite3==0.5.2 # dnf install -y sqlite-devel gcc python3-devel
+pysqlite3==0.5.2 # dnf install -y sqlite-devel
 
 # Testing
 pytest==7.4.3
